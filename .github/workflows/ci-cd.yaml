@@ -1,19 +1,25 @@
 name: CI/CD Workflow for Class
 
-on: 
+on:
   push:
     branch: olt
 
 jobs:
-  build: 
+  build:
     name: Build Frontend Artifact
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
-        with: 
+        with:
           node-version: 16.x
+
+      - name: Cache Node Modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: fe-node-${{ hashFiles('frontend/package-lock.json') }}
 
       - run: cd frontend && npm i
 
@@ -21,7 +27,7 @@ jobs:
 
       - name: Upload static files as artifact
         id: deployment
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v3 # or specific "vX.X.X" version tag for this action
         with:
           path: frontend/build
 
@@ -40,3 +46,86 @@ jobs:
 
       - name: audit
         run: cd frontend && npm audit --omit=dev
+
+  test:
+    name: 🧪 Run Unit Tests
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 16
+        uses: actions/setup-node@v4
+        with:
+          node-version: 16.x
+
+      - name: Cache Node Modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: fe-node-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install deps
+        run: cd frontend && npm i
+
+      - name: Run the unit tests
+        run: cd frontend && npm run test-ci
+
+  lint:
+    name: 🧼 Ensure Code Style
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 16
+        uses: actions/setup-node@v4
+        with:
+          node-version: 16.x
+
+      - name: Cache Node Modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: fe-node-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install deps
+        run: cd frontend && npm i
+
+      - name: 😂 Lint code
+        run: cd frontend && npm run lint
+
+  static-analysis:
+    name: 🔬 Run Static Code Analysis
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          config-file: ./.github/codeql/codeql.config.yml
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 16.x
+
+      - name: Cache Node Modules
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: fe-node-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Deps
+        run: cd frontend && npm i
+
+      - name: Build
+        run: cd frontend && npm run build
+
+      - name: Perform Analysis
+        uses: github/codeql-action/analyze@v3
